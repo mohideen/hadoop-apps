@@ -27,10 +27,14 @@ public class MD5Batch extends Configured implements Tool {
     InputStream inStream;
     FileSystem hdfs;
     Text hashText = new Text();
+    int srcPathLength;
+    boolean sortByPath;
     
     @Override
     protected void setup(Context context) throws IOException ,InterruptedException {
       hdfs = FileSystem.get(context.getConfiguration());
+      srcPathLength = context.getConfiguration().getInt("srcPathLength", 0);
+      sortByPath = context.getConfiguration().get("sortBy", "md5hash").equalsIgnoreCase("path");
     }
     
     @Override
@@ -41,13 +45,24 @@ public class MD5Batch extends Configured implements Tool {
       inStream = (hdfs.open(inputPath));
       MD5Hash md5hash = MD5Hash.digest(inStream);
       hashText.set(md5hash.toString());
-      context.write(hashText, key);
+      key.set(inputPath.toString().substring(srcPathLength));
+      if(sortByPath) {
+        context.write(key, hashText);
+      } else {
+        context.write(hashText, key);
+      }
+      
     }
    
   }
   
   private void usage() {
-    System.err.println("Usage: MD5Batch inputFile outputFile numMaps ");
+    System.err.println("---------------------------------------------------");
+    System.err.println("Usage: MD5Batch inputFile outputFile numMaps [sortBy]");
+    System.out.println("\tsortBy (optional):");
+    System.out.println("\t\tmd5hash");
+    System.out.println("\t\tpath");
+    System.err.println("---------------------------------------------------");
     ToolRunner.printGenericCommandUsage(System.out);
   }
   
@@ -57,6 +72,8 @@ public class MD5Batch extends Configured implements Tool {
     Path listPath = new Path(pathPrefix + "-list.seq");
     FileListing fileListing = new FileListing();
     Path mapInputDir;
+    Text pathString = new Text();
+    
     try {
       long numPaths = fileListing.createListing(sourcePath, listPath);
       mapInputDir = new Path(pathPrefix + "-inputdir");
@@ -68,10 +85,11 @@ public class MD5Batch extends Configured implements Tool {
       SequenceFile.Writer.Option keyClassOpt = SequenceFile.Writer.keyClass(Text.class);
       SequenceFile.Writer.Option valClassOpt = SequenceFile.Writer.valueClass(NullWritable.class);
       SequenceFile.Writer.Option optCom = SequenceFile.Writer.compression(SequenceFile.CompressionType.NONE);
-      Text pathString = new Text();
+      //Text pathString = new Text();
       NullWritable nWritable = NullWritable.get();
       Path tmpInputFilePath;
       SequenceFile.Writer seqFileWriter;
+      System.out.println("Num Maps - Num Paths: " + numMaps + " - " + numPaths);
       if(numMaps > numPaths) {
         for(int count=0; count<numPaths; count++) {
           tmpInputFilePath = new Path(mapInputDir.toString() + "/part-" + count);
@@ -80,6 +98,7 @@ public class MD5Batch extends Configured implements Tool {
               valClassOpt, optCom);
           sReader.next(pathString);
           seqFileWriter.append(pathString, nWritable);
+          seqFileWriter.close();
         }
       } else {
         long addedPaths = 0;
@@ -119,12 +138,20 @@ public class MD5Batch extends Configured implements Tool {
     String inputFile = args[0];
     String outputDir = args[1];
     String numMaps = args[2];
+    
+    
 
     Path inputPath = new Path(inputFile);
     Path outputPath = new Path(outputDir);
     Path mapInputDir;
     mapInputDir = createMapInputs(inputPath, Integer.parseInt(numMaps));
-    
+    int srcPathLength = inputPath.toString().length();
+    if(inputPath.toString().endsWith("/")) {
+      srcPathLength--;
+    }
+    if(!inputPath.toString().startsWith("hdfs://")) {
+      srcPathLength += FileSystem.getDefaultUri(getConf()).toString().length() + 1;
+    }
       
     Job job = Job.getInstance(getConf());
     job.setJobName("MD5Batch");
@@ -139,8 +166,15 @@ public class MD5Batch extends Configured implements Tool {
     job.setMapOutputValueClass(Text.class);
     job.getConfiguration().set(JobContext.MAP_SPECULATIVE, "false");
     job.getConfiguration().set(JobContext.NUM_MAPS, numMaps);
+    job.getConfiguration().setInt("srcPathLength", srcPathLength);
+    
     SequenceFileInputFormat.addInputPath(job, mapInputDir);
     FileOutputFormat.setOutputPath(job, outputPath);
+    if(args.length == 4) {
+      String sortBy = args[3];
+      job.getConfiguration().set("sortBy", sortBy);
+      job.setNumReduceTasks(1);
+    }
     
     try { 
       long startTime = System.currentTimeMillis();

@@ -23,6 +23,7 @@ public class FileListing extends Configured implements Tool {
   public long createListing(Path sourcePath, Path outputPath)  throws Exception {
     Configuration conf = new Configuration();
     FileSystem hdfs = FileSystem.get(conf);
+    hdfs.create(outputPath, true);
     long numPaths = 0;
     SequenceFile.Writer.Option pathOpt = SequenceFile.Writer.file(outputPath);
     SequenceFile.Writer.Option keyClassOpt = SequenceFile.Writer.keyClass(Text.class);
@@ -30,7 +31,7 @@ public class FileListing extends Configured implements Tool {
     SequenceFile.Writer.Option optCom = SequenceFile.Writer.compression(SequenceFile.CompressionType.NONE);
     
     if(hdfs.exists(sourcePath)) {
-      hdfs.create(outputPath, true);
+      
       SequenceFile.Writer outputList = SequenceFile.createWriter(conf, pathOpt, keyClassOpt, 
           valClassOpt, optCom);
       Text pathString = new Text();
@@ -38,11 +39,10 @@ public class FileListing extends Configured implements Tool {
       if(hdfs.isDirectory(sourcePath)) {
         RemoteIterator<LocatedFileStatus> pathIterator = (RemoteIterator<LocatedFileStatus>)hdfs.listFiles(sourcePath, true);
         FileStatus currentFile;
-        
         while(pathIterator.hasNext()) {
           currentFile = (FileStatus)pathIterator.next();
           pathString.set(currentFile.getPath().toString());
-          //System.out.println(currentFile.getPath().toString());
+          System.out.println(currentFile.getPath().toString());
           outputList.append(pathString, nWritable);
           numPaths++;
         }
