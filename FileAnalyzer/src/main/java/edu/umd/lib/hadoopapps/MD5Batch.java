@@ -58,7 +58,7 @@ public class MD5Batch extends Configured implements Tool {
   
   private void usage() {
     System.err.println("---------------------------------------------------");
-    System.err.println("Usage: MD5Batch inputFile outputFile numMaps [sortBy]");
+    System.err.println("Usage: MD5Batch inputDir outputFile numMaps [sortBy]");
     System.out.println("\tsortBy (optional):");
     System.out.println("\t\tmd5hash");
     System.out.println("\t\tpath");
